@@ -1,15 +1,15 @@
-with portfolio_eff as (
+with portfolio_eff as ( --transform table portfolio to table with "effective_from - effective_to format" 
 select 
 	p.*
 	,isnull(dateadd(second, -1, lead(portfolio_dttm) over (PARTITION by loan_key order by portfolio_dttm)), Cast('1/1/2100' as datetime)
-				) as effective_to
+				) as effective_to --find next row for current loan and take from it date minus one second. if current date is the last then use 2100 year
 from 
 	portfolio p
 )
 , overdue as (
 select 
 	pe.loan_key
-	,max(datediff(day, b.date, portfolio_dttm)) - 1 as days_in_overdue 
+	,max(datediff(day, b.date, portfolio_dttm)) - 1 as days_in_overdue --for every loan find difference in days between billing date and last day in overdue
 from 
 	portfolio_eff pe
 left join 
@@ -24,7 +24,7 @@ group by
 , default_matured as (
 select 
 	pe.loan_key
-	,max(datediff(day, b.date, convert(date,getdate()))) - 1 as days_after_billing 
+	,max(datediff(day, b.date, convert(date,getdate()))) - 1 as days_after_billing --count of days between billing date and current day 
 from 
 	portfolio_eff pe
 left join 
@@ -34,7 +34,7 @@ left join
 group by 
 	pe.loan_key
 )
-, default_status as (
+, default_status as (  -- all default info at one table
 select 
 	dm.loan_key
 	,dm.days_after_billing
@@ -46,15 +46,16 @@ left join
 	on 
 		dm.loan_key = o.loan_key
 )  
-, previous_loans_overdue as (
+, previous_loans_overdue as ( -- find all previous loans of client and calculate their overdue
 select 
 	l_current.loan_key, l_previous.loan_key as loan_key_previous
 	,max(datediff(day, bp.[date], 
 			case when pe.effective_to > l_current.issue_date then l_current.issue_date else pe.effective_to end)) as max_overdue_for_prev_loans
+			--calc max overdue for all previous loans before date of current loan
 from 
-	loan l_current
+	loan l_current --all loans
 join 
-	loan l_previous
+	loan l_previous --all previous loans of current client
 	on 1=1
 		and l_current.client_key = l_previous.client_key
 		and l_current.issue_date > l_previous.issue_date
@@ -63,16 +64,16 @@ join
 	on 
 		l_previous.loan_key = bp.loan_key
 join 
-	portfolio_eff pe 
+	portfolio_eff pe --portfolio info for all previous loans
 	on 1=1 
 		and pe.loan_key = l_previous.loan_key
 		and pe.portfolio_dttm < l_current.issue_date
 where 
-	pe.is_overdue = 1
+	pe.is_overdue = 1  --use only previous loans at overdue 
 group by 
 	l_current.loan_key, l_previous.loan_key
 )
-, previous_default as (
+, previous_default as ( --find count of previous loans with 1+, 3+, 10+ and 30+ default 
 select 
 	loan_key
 	,count(*) as cnt_prev_overdue_loans
@@ -84,7 +85,7 @@ from
 group by 
 	loan_key
 )
-, previous_loans as (
+, previous_loans as ( -- cnt of previous loans. same algorithm as for previous default calculation
 select 
 	a.application_key
 	,count(l.loan_key) as cnt_prev_loans
@@ -108,9 +109,9 @@ select
 	a.application_key
 	,count(payms.amount) as cnt_prev_payms
 	,sum(payms.amount) as sum_prev_amount
-	,min(datediff(day, payms.paym_date, a.application_dttm)) as prev_paym_daydiff
+	,min(datediff(day, payms.paym_date, a.application_dttm)) as prev_paym_daydiff --cnt of days from last payment
 from 
-	application a
+	application a --current applications
 left join
 	(
 		select 
@@ -124,14 +125,14 @@ left join
 			payment p 
 			on 1=1
 	 			and l.loan_key = p.loan_key
-	) payms 
+	) payms -- join all previous payments of clients
 	on 1=1
 		and a.client_key = payms.client_key
 		and a.application_dttm > payms.paym_date
 group by 
 	a.application_key
 )
-select 
+select  -- join all tbles
 	cl.client_key
 	,cl.fact_address
 	,cl.inn

@@ -122,32 +122,41 @@ def create_folder(folder):
         os.makedirs(folder)
 
 def full_modeling(target, pre_clust_df, model_path, id_column):
-
+    """for current target and dataframe (pre_clust_df) transform all features to woe buckets and learn model"""
     targets = [x for x in pre_clust_df.columns if x[:8] == 'default_']
-    # olders for result saving
+    # folders for result saving
     folder_auc = model_path + '/pictures/roc_auc'
     folder_column_pics = model_path + '/pictures'
     folder_model_output = model_path + '/model_output'
     create_folder(folder_auc)
-    #create_folder(folder_column_pics)
     create_folder(folder_model_output)
     
-    pre_clust_df = pre_clust_df[pre_clust_df[target]>-.5] # only matured loans
+    #take only matured loans
+    pre_clust_df = pre_clust_df[pre_clust_df[target]>-.5] 
     pre_clust_df = pre_clust_df.set_index(id_column)
 
+    #drop all target columns except current tarhet column
     drop_targets = [col for col in targets if col != target] 
     drop_targets = list(set(drop_targets) & set(pre_clust_df))
     pre_clust_df = pre_clust_df.drop(drop_targets, 1)
 
-    dfPreWoe, clustVarsInfo = sf.continuousVariables(pre_clust_df, columnLimit=10)
+    #transform continous variables to bucket columns
+    dfPreWoe, clustVarsInfo = sf.continuousVariables(pre_clust_df, columnLimit=10)  
+    #trassform to woe columns
     dfPostWoe, woeVarsInfo = sf.woeVariables(dfPreWoe,target)
 
+    #look at information value of variables
     gg = sf.giniGrowth(dfPostWoe,woeVarsInfo,target)
+    #chose best columns
     goodColumns, badColumns = sf.chooseColumnsFromIT(gg, badFlag=target, min_limit=0.01)
 
+    #create log regression model
     model = sf.logReg(preLR=dfPostWoe[goodColumns], badFlag=target)
+    #save roc_auc picture 
     model.print_roc_curve(to_file=True, folder=folder_auc)
 
+    #generate doc information about model and variables
     intercept, woeOut = sf.modelOutput(folder_model_output, woeVarsInfo, goodColumns, model, gg, rewrite=True)
 
+    #generate and save pictures of feature distribution
     bad_columns = woe.save_pictures(woeVarsInfo, folder = folder_column_pics, badRateLimit=100)

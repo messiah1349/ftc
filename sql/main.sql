@@ -132,6 +132,26 @@ left join
 group by 
 	a.application_key
 )
+, tend as (		
+select distinct 
+	application_key
+	,tt.name
+	,t.tender_law
+	,t.tender_platform_name
+	,t.contract_amount
+	,t.tender_platform_site
+	,t.contract_signed_date
+	,t.contract_finish_date
+	,datediff(day, t.contract_signed_date, t.contract_finish_date) as contract_duration
+	,t.contract_contents
+	,case when t.bank_guarantee like '%да %' then 1 when t.bank_guarantee like '%нет %' then -1 else 0 end as bank_guarantee  
+from
+	tender t
+join 
+	dictionary.tender_type tt
+	on 
+		t.tender_type_key = tt.tender_type_key
+)	
 select  -- join all tbles
 	cl.client_key
 	,cl.fact_address
@@ -182,6 +202,16 @@ select  -- join all tbles
 	,pp.cnt_prev_payms
 	,pp.sum_prev_amount
 	,pp.prev_paym_daydiff
+	,t.name as tender_type_name 
+	,t.tender_law
+	,t.tender_platform_name
+	,t.contract_amount as tender_contract_amount 
+	,t.tender_platform_site
+	,t.contract_signed_date as tender_contract_signed_date
+	,t.contract_finish_date as tender_contract_finish_date
+	,t.contract_duration as tender_contract_duration 
+	,t.contract_contents
+	,t.bank_guarantee as tender_bank_guarantee
 from 
 	dwh.dbo.application app
 join 
@@ -220,6 +250,9 @@ left join
 	previous_payms pp 
 	on 
 		pp.application_key = app.application_key
-		
-		
+left join
+	tend t 
+	on 
+		t.application_key = app.application_key
+	
 		

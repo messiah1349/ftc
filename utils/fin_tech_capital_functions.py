@@ -43,7 +43,8 @@ def read_sql_from_file(path, conn):
     return df
 
 def transform_data(src):
-    columns_to_date = ['legal_registration_date', 'originator_registration_date'] #all date columns
+    columns_to_date = ['legal_registration_date', 'originator_registration_date', 
+        'tender_contract_finish_date', 'tender_contract_signed_date'] #all date columns
 
     columns_to_numeric = ['amount_executed_for_24_month',  'bki_flg_30',
            'bki_flg_90', 'bki_flg_90plus', 'bki_volume', 
@@ -52,11 +53,12 @@ def transform_data(src):
            'number_of_executed_for_24_month', 'number_of_the_following_users',
            'number_with_similar_sum_for_24_months',
            'number_with_customer_for_24_months',
-           'number_with_similar_work_for_24_months', 'total_current_contracts',]  # all numeric columns
+           'number_with_similar_work_for_24_months', 'total_current_contracts','tender_contract_amount', ]  # all numeric columns
 
     drop_columns = ['fact_address', 'client_key', 'okved', 'inn', 'originator_name', 'product_name',
                     'days_in_overdue', 'days_after_billing', 'application_status_id', 'application_dttm',
-                   'organizational_form_key', 'legal_address', 'ogrn', 'originator_registration_date_dd'] # all columns wich will be drop
+                   'organizational_form_key', 'legal_address', 'ogrn', 'originator_registration_date_dd',
+                   'tender_platform_site', 'tender_type_name','contract_contents', 'tender_platform_name',] # all columns wich will be drop
 
     for col in columns_to_date: # convert column to date format and find difference in days between date of application
         src[col] = pd.to_datetime(src[col])
@@ -92,6 +94,16 @@ def transform_data(src):
     for default_day in default_days:  # check if loan is matured yhen calculate default flag for every defaul flags
         src[f'default_{default_day}_flag'] = default_calc_series.apply(
             lambda x: np.nan if x[1] < default_day else 1 if x[0] > default_day else 0)
+
+    top_tender_sites = ['http://www.sberbank-ast.ru', 'http://www.rts-tender.ru',
+       'http://roseltorg.ru']
+
+    src.tender_platform_site = \
+    src.tender_platform_site.apply(lambda x: x if x in top_tender_sites else 'other_site')
+
+    src = pd.concat([src,pd.get_dummies(src.tender_platform_site, prefix='tender_site')], 1)
+
+    src.tender_law = np.where(src.tender_law=='44-ФЗ', 1,0)
 
     src = src.drop(drop_columns + columns_to_date, 1) # drop all unused columns
 
